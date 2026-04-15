@@ -1,0 +1,44 @@
+version: "3.9"
+
+services:
+
+  # Local Azure Storage emulator
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.29.0
+    container_name: genai-azurite
+    ports:
+      - "10000:10000"   # Blob
+      - "10001:10001"   # Queue
+      - "10002:10002"   # Table  ← used by the backend
+    volumes:
+      - azurite-data:/data
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --silent
+
+  # FastAPI backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: genai-backend
+    ports:
+      - "8000:8000"
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OGLjX+N4oYp9MVaGYO+YDWF7LtJ3VXQZ7DlB2IyQ==;TableEndpoint=http://azurite:10002/devstoreaccount1;"
+      CORS_ORIGINS: "http://localhost:3000,http://localhost:8080,http://127.0.0.1:5500,http://localhost:5500"
+    depends_on:
+      - azurite
+    restart: on-failure
+
+  # Serve frontend (static file server — no build step needed)
+  frontend:
+    image: nginx:1.27-alpine
+    container_name: genai-frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+
+volumes:
+  azurite-data:

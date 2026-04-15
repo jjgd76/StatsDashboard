@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GenAI Adoption Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
+          integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3oD+sCoJrzXJ+yKjtkTIphB9TdhEsnQFpsORSPQG+ZkNo8nUdwLGaQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <style>
+    :root {
+      --bg:       #0f1117;
+      --card:     #1a1d27;
+      --card2:    #1f2335;
+      --border:   #2d3149;
+      --text:     #e2e8f0;
+      --muted:    #8892b0;
+      --claude:   #D97757;
+      --chatgpt:  #10A37F;
+      --copilot:  #0078D4;
+      --ok:       #22c55e;
+      --err:      #ef4444;
+      --r:        10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 14px; line-height: 1.5; }
+
+    /* ── TOP BAR ── */
+    .topbar {
+      position: sticky; top: 0; z-index: 200;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; height: 56px;
+      background: var(--card); border-bottom: 1px solid var(--border);
+    }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
+    .logo { font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
+    .logo span { opacity: .4; margin: 0 4px; }
+    #lastUpdated { font-size: 12px; color: var(--muted); }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 6px 13px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--text); cursor: pointer; font-size: 13px;
+      transition: background .15s, border-color .15s;
+    }
+    .btn:hover { background: var(--card2); border-color: #4f5882; }
+    .btn.active { background: var(--card2); border-color: #4f5882; }
+
+    /* ── MAIN ── */
+    .main { max-width: 1440px; margin: 0 auto; padding: 24px; }
+
+    /* ── ALERT ── */
+    .alert {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 12px 16px; border-radius: 8px; margin-bottom: 20px;
+      font-size: 13px; border: 1px solid;
+    }
+    .alert-info  { background: rgba(59,76,202,.12); border-color: rgba(59,76,202,.3); color: #a5b4fc; }
+    .alert-error { background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.25); color: #fca5a5; }
+    .alert.hidden { display: none; }
+
+    /* ── UPLOAD PANEL ── */
+    .upload-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 24px; }
+    .upload-panel-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 18px; cursor: pointer; user-select: none; border-radius: var(--r);
+    }
+    .upload-panel-hdr:hover { background: var(--card2); }
+    .upload-panel-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .upload-panel-body {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 16px;
+      padding: 0 18px 18px;
+    }
+    .upload-panel-body.hidden { display: none; }
+
+    .upload-zone {
+      border: 2px dashed var(--border); border-radius: 8px; padding: 20px;
+      text-align: center; transition: border-color .2s, background .2s; cursor: pointer; position: relative;
+    }
+    .upload-zone:hover, .upload-zone.drag-over { border-color: #4f5882; background: rgba(79,88,130,.08); }
+    .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
+    .upload-zone-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+    .upload-zone-hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; line-height: 1.45; }
+    .upload-zone-btn {
+      display: inline-block; padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
+      font-size: 12px; pointer-events: none;
+    }
+    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+    .dot-claude   { background: var(--claude); }
+    .dot-chatgpt  { background: var(--chatgpt); }
+    .dot-copilot  { background: var(--copilot); }
+
+    .upload-status { font-size: 12px; margin-top: 10px; padding: 5px 10px; border-radius: 5px; min-height: 26px; }
+    .upload-status.ok      { background: rgba(34,197,94,.12); color: var(--ok); }
+    .upload-status.err     { background: rgba(239,68,68,.12); color: var(--err); }
+    .upload-status.loading { background: rgba(79,88,130,.12); color: var(--muted); }
+    .upload-status:empty   { display: none; }
+
+    /* ── PERIOD TABS ── */
+    .period-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; }
+    .period-bar label { font-size: 12px; color: var(--muted); }
+    .tab {
+      padding: 5px 16px; border-radius: 6px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 13px; font-weight: 500;
+      transition: all .15s;
+    }
+    .tab:hover { color: var(--text); border-color: #4f5882; }
+    .tab.active { background: #3b4cca; border-color: #3b4cca; color: #fff; }
+
+    /* ── SECTION LABEL ── */
+    .section-lbl { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin-bottom: 12px; }
+
+    /* ── KPI GRID ── */
+    .kpi-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 24px; }
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 18px; position: relative; overflow: hidden;
+    }
+    .kpi-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; }
+    .kpi-card.claude::before  { background: var(--claude); }
+    .kpi-card.chatgpt::before { background: var(--chatgpt); }
+    .kpi-card.copilot::before { background: var(--copilot); }
+
+    .kpi-plat { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; margin-bottom: 2px; }
+    .kpi-plat.claude  { color: var(--claude); }
+    .kpi-plat.chatgpt { color: var(--chatgpt); }
+    .kpi-plat.copilot { color: var(--copilot); }
+
+    .kpi-lbl  { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+    .kpi-val  { font-size: 24px; font-weight: 700; letter-spacing: -.5px; line-height: 1; }
+    .kpi-sub  { font-size: 11px; color: var(--muted); margin-top: 5px; }
+    .kpi-na   { font-size: 14px; color: var(--muted); font-style: italic; }
+
+    /* adoption bar inside KPI */
+    .adop-bar-wrap { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .adop-bar-bg   { flex: 1; height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+    .adop-bar-fill { height: 100%; border-radius: 3px; background: var(--copilot); transition: width .5s; }
+    .adop-pct      { font-size: 11px; color: var(--muted); min-width: 32px; text-align: right; }
+
+    /* ── CHARTS GRID ── */
+    .charts-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .chart-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; }
+    .chart-title { font-size: 13px; font-weight: 600; margin-bottom: 14px; }
+    .chart-wrap  { position: relative; height: 220px; }
+
+    /* ── BREAKDOWN TABLES ── */
+    .breakdown-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+    .bk-card { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); overflow: hidden; }
+    .bk-hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 16px; cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
+    }
+    .bk-hdr:hover { background: var(--card2); }
+    .bk-title { font-size: 13px; font-weight: 600; }
+    .bk-body.collapsed { display: none; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    th { padding: 7px 14px; text-align: left; color: var(--muted); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .4px; border-bottom: 1px solid var(--border); background: rgba(0,0,0,.2); }
+    td { padding: 8px 14px; border-bottom: 1px solid rgba(45,49,73,.4); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.02); }
+    .empty-row td { text-align: center; color: var(--muted); font-style: italic; padding: 18px; }
+
+    /* ── SKELETON ── */
+    @keyframes shimmer { 0%{background-position:-600px 0} 100%{background-position:600px 0} }
+    .skel {
+      background: linear-gradient(90deg, var(--card) 25%, var(--card2) 50%, var(--card) 75%);
+      background-size: 1200px 100%; animation: shimmer 1.5s infinite;
+      border-radius: 4px; display: inline-block;
+    }
+    .skel-sm  { width: 55%; height: 13px; }
+    .skel-lg  { width: 40%; height: 26px; margin-top: 6px; }
+
+    /* ── SPINNER ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spin { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
+
+    /* ── FOOTER ── */
+    footer { text-align: center; padding: 20px 24px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); margin-top: 8px; }
+
+    /* ── RESPONSIVE ── */
+    @media(max-width:960px) {
+      .kpi-grid, .breakdown-grid, .upload-panel-body { grid-template-columns: repeat(2,1fr); }
+      .charts-2 { grid-template-columns: 1fr; }
+    }
+    @media(max-width:580px) {
+      .kpi-grid, .breakdown-grid, .upload-panel-body { grid-template-columns: 1fr; }
+      .topbar { padding: 0 14px; }
+      .main { padding: 14px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════════════════ TOP BAR -->
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo">GenAI Adoption Dashboard</div>
+    <div id="lastUpdated"></div>
+  </div>
+  <div class="topbar-right">
+    <button class="btn" id="toggleUpload">⬆ Upload Data</button>
+    <button class="btn" id="refreshBtn">↻ Refresh</button>
+  </div>
+</header>
+
+<div class="main">
+
+  <!-- ══════════════════════════════════════════════ ALERT -->
+  <div class="alert alert-info hidden" id="alertBanner"></div>
+
+  <!-- ══════════════════════════════════════════════ UPLOAD PANEL -->
+  <div class="upload-panel" id="uploadPanel">
+    <div class="upload-panel-hdr" id="uploadPanelHdr">
+      <div class="upload-panel-title">⬆ Upload Platform Exports <span style="color:var(--muted);font-weight:400;font-size:12px;">— drag &amp; drop CSV files exported from each platform's admin console</span></div>
+      <span id="uploadChevron">▲</span>
+    </div>
+    <div class="upload-panel-body" id="uploadPanelBody">
+
+      <!-- Anthropic -->
+      <div class="upload-zone" id="zone-anthropic" data-platform="anthropic">
+        <input type="file" accept=".csv,.json" id="file-anthropic" />
+        <div class="upload-zone-name"><span class="dot dot-claude"></span>Claude (Anthropic)</div>
+        <div class="upload-zone-hint">Export from <strong>console.anthropic.com</strong> → Settings → Usage → Export CSV</div>
+        <div class="upload-zone-btn">Choose file or drag here</div>
+        <div class="upload-status" id="status-anthropic"></div>
+      </div>
+
+      <!-- OpenAI -->
+      <div class="upload-zone" id="zone-openai" data-platform="openai">
+        <input type="file" accept=".csv,.json" id="file-openai" />
+        <div class="upload-zone-name"><span class="dot dot-chatgpt"></span>ChatGPT (OpenAI)</div>
+        <div class="upload-zone-hint">Export from <strong>platform.openai.com</strong> → Usage → Export</div>
+        <div class="upload-zone-btn">Choose file or drag here</div>
+        <div class="upload-status" id="status-openai"></div>
+      </div>
+
+      <!-- M365 Copilot -->
+      <div class="upload-zone" id="zone-copilot" data-platform="copilot">
+        <input type="file" accept=".csv,.json" id="file-copilot" />
+        <div class="upload-zone-name"><span class="dot dot-copilot"></span>M365 Copilot</div>
+        <div class="upload-zone-hint">Export from <strong>admin.microsoft.com</strong> → Reports → Microsoft 365 Copilot → Export</div>
+        <div class="upload-zone-btn">Choose file or drag here</div>
+        <div class="upload-status" id="status-copilot"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ PERIOD TABS -->
+  <div class="period-bar">
+    <label>Period:</label>
+    <button class="tab" data-period="7">7D</button>
+    <button class="tab active" data-period="30">30D</button>
+    <button class="tab" data-period="90">90D</button>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ KPI CARDS -->
+  <div class="section-lbl">Key Metrics</div>
+  <div class="kpi-grid" id="kpiGrid">
+    <!-- Populated by JS -->
+  </div>
+
+  <!-- ══════════════════════════════════════════════ CHARTS ROW 1 -->
+  <div class="section-lbl">Usage Trends</div>
+  <div class="charts-2">
+    <div class="chart-card">
+      <div class="chart-title">Daily Requests — all platforms</div>
+      <div class="chart-wrap"><canvas id="chartRequests"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">Daily Cost USD — all platforms (stacked)</div>
+      <div class="chart-wrap"><canvas id="chartCost"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ CHARTS ROW 2 -->
+  <div class="charts-2">
+    <div class="chart-card">
+      <div class="chart-title">Active Users by Platform</div>
+      <div class="chart-wrap"><canvas id="chartUsers"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <div class="chart-title">M365 Copilot — Seat Adoption</div>
+      <div class="chart-wrap"><canvas id="chartAdoption"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════ MODEL BREAKDOWN -->
+  <div class="section-lbl">Model Breakdown</div>
+  <div class="breakdown-grid" id="breakdownGrid">
+    <!-- Populated by JS -->
+  </div>
+
+  <footer>Data sourced from uploaded exports · Claude (Anthropic Console) · ChatGPT (OpenAI Platform) · M365 Copilot (Microsoft 365 Admin Center)</footer>
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════
+// CONFIG  — change BACKEND_URL to point at your deployed API
+// ════════════════════════════════════════════════════════════
+const BACKEND_URL = 'http://localhost:8000';
+
+// ════════════════════════════════════════════════════════════
+// STATE
+// ════════════════════════════════════════════════════════════
+let currentPeriod = 30;
+let summaryData   = null;
+let trendData     = null;
+let charts        = {};
+
+const PLATFORMS = [
+  { key: 'claude',      label: 'Claude',      cls: 'claude',  color: '#D97757' },
+  { key: 'chatgpt',     label: 'ChatGPT',     cls: 'chatgpt', color: '#10A37F' },
+  { key: 'm365_copilot',label: 'M365 Copilot',cls: 'copilot', color: '#0078D4' },
+];
+
+// ════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const fmt = {
+  num:  n => n == null ? '—' : Number(n).toLocaleString(),
+  usd:  n => n == null ? '—' : '$' + Number(n).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}),
+  pct:  n => n == null ? '—' : Number(n).toFixed(1) + '%',
+};
+
+function showAlert(msg, type='info') {
+  const el = $('alertBanner');
+  el.textContent = msg;
+  el.className = `alert alert-${type}`;
+}
+function hideAlert() { $('alertBanner').className = 'alert hidden'; }
+
+// ════════════════════════════════════════════════════════════
+// FETCH
+// ════════════════════════════════════════════════════════════
+async function loadAll(period) {
+  hideAlert();
+  setSkeletons();
+
+  const [sumRes, trendRes] = await Promise.allSettled([
+    fetch(`${BACKEND_URL}/metrics/summary?period=${period}`),
+    fetch(`${BACKEND_URL}/metrics/trend?platform=all&days=${period}`),
+  ]);
+
+  // Summary
+  if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
+    summaryData = await sumRes.value.json();
+  } else if (sumRes.status === 'fulfilled' && sumRes.value.status === 503) {
+    const body = await sumRes.value.json();
+    summaryData = null;
+    showAlert('ℹ️  ' + (body.detail || 'No data yet — upload a CSV export above to get started.'));
+  } else {
+    summaryData = null;
+    showAlert('⚠️  Could not reach the backend at ' + BACKEND_URL + '. Make sure the API is running.', 'error');
+  }
+
+  // Trend
+  if (trendRes.status === 'fulfilled' && trendRes.value.ok) {
+    trendData = await trendRes.value.json();
+  } else {
+    trendData = null;
+  }
+
+  render();
+}
+
+// ════════════════════════════════════════════════════════════
+// SKELETONS
+// ════════════════════════════════════════════════════════════
+function setSkeletons() {
+  const grid = $('kpiGrid');
+  grid.innerHTML = '';
+  const metrics = ['Active Users', 'Total Cost', 'Total Requests'];
+  PLATFORMS.forEach(p => {
+    metrics.forEach(m => {
+      grid.insertAdjacentHTML('beforeend', `
+        <div class="kpi-card ${p.cls}">
+          <div class="kpi-plat ${p.cls}">${p.label}</div>
+          <div class="kpi-lbl">${m}</div>
+          <div><span class="skel skel-sm"></span></div>
+          <div><span class="skel skel-lg"></span></div>
+        </div>`);
+    });
+  });
+}
+
+// ════════════════════════════════════════════════════════════
+// RENDER
+// ════════════════════════════════════════════════════════════
+function render() {
+  renderKPIs();
+  renderCharts();
+  renderBreakdown();
+  updateLastUpdated();
+}
+
+function updateLastUpdated() {
+  const ts = summaryData?.last_updated;
+  $('lastUpdated').textContent = ts
+    ? 'Last updated: ' + new Date(ts).toLocaleString()
+    : '';
+}
+
+// ─── KPI CARDS ──────────────────────────────────────────────
+function renderKPIs() {
+  const grid = $('kpiGrid');
+  grid.innerHTML = '';
+
+  PLATFORMS.forEach(p => {
+    const d = summaryData?.platforms?.[p.key];
+
+    // Active Users
+    grid.insertAdjacentHTML('beforeend', buildKPI(p, 'Active Users',
+      d ? fmt.num(d.active_users ?? d.total_requests) : null,
+      d?.active_users == null && d ? 'Derived from requests' : null,
+      !d
+    ));
+
+    // Total Cost
+    grid.insertAdjacentHTML('beforeend', buildKPI(p, 'Total Cost (USD)',
+      d ? fmt.usd(d.total_cost_usd) : null,
+      d && p.key === 'm365_copilot' ? 'Licence cost not included' : null,
+      !d
+    ));
+
+    // Requests  or  Adoption Rate
+    if (p.key === 'm365_copilot' && d?.adoption_rate_pct != null) {
+      grid.insertAdjacentHTML('beforeend', buildAdoptionKPI(p, d));
+    } else {
+      grid.insertAdjacentHTML('beforeend', buildKPI(p, 'Total Requests',
+        d ? fmt.num(d.total_requests) : null,
+        null, !d
+      ));
+    }
+  });
+}
+
+function buildKPI(p, label, value, sub, unavailable) {
+  if (unavailable) {
+    return `<div class="kpi-card ${p.cls}">
+      <div class="kpi-plat ${p.cls}">${p.label}</div>
+      <div class="kpi-lbl">${label}</div>
+      <div class="kpi-na">Data unavailable</div>
+    </div>`;
+  }
+  return `<div class="kpi-card ${p.cls}">
+    <div class="kpi-plat ${p.cls}">${p.label}</div>
+    <div class="kpi-lbl">${label}</div>
+    <div class="kpi-val">${value}</div>
+    ${sub ? `<div class="kpi-sub">${sub}</div>` : ''}
+  </div>`;
+}
+
+function buildAdoptionKPI(p, d) {
+  const pct = d.adoption_rate_pct ?? 0;
+  return `<div class="kpi-card ${p.cls}">
+    <div class="kpi-plat ${p.cls}">${p.label}</div>
+    <div class="kpi-lbl">Seat Adoption Rate</div>
+    <div class="kpi-val">${fmt.pct(pct)}</div>
+    <div class="adop-bar-wrap">
+      <div class="adop-bar-bg"><div class="adop-bar-fill" style="width:${Math.min(pct,100)}%"></div></div>
+      <div class="adop-pct">${fmt.num(d.active_users)} / ${fmt.num(d.licensed_seats)}</div>
+    </div>
+  </div>`;
+}
+
+// ─── CHARTS ─────────────────────────────────────────────────
+function destroyChart(id) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+}
+
+function buildLabels() {
+  // Collect all dates from trend data across all platforms
+  const dateSet = new Set();
+  if (trendData?.trends) {
+    Object.values(trendData.trends).forEach(arr =>
+      arr.forEach(r => r.date && dateSet.add(r.date))
+    );
+  }
+  // If no trend data, fall back to last N days
+  if (!dateSet.size) {
+    const today = new Date();
+    for (let i = currentPeriod - 1; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      dateSet.add(d.toISOString().slice(0, 10));
+    }
+  }
+  return Array.from(dateSet).sort();
+}
+
+function trendMap(platform) {
+  const arr = trendData?.trends?.[platform] ?? [];
+  const map = {};
+  arr.forEach(r => { if (r.date) map[r.date] = r; });
+  return map;
+}
+
+function renderCharts() {
+  const labels = buildLabels();
+
+  // ── Line: Daily Requests
+  destroyChart('requests');
+  charts.requests = new Chart($('chartRequests'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: PLATFORMS.map(p => {
+        const m = trendMap(p.key);
+        return {
+          label: p.label,
+          data: labels.map(d => m[d]?.requests ?? null),
+          borderColor: p.color,
+          backgroundColor: p.color + '20',
+          tension: 0.35,
+          fill: false,
+          pointRadius: 2,
+          spanGaps: true,
+        };
+      }),
+    },
+    options: chartOpts('Requests'),
+  });
+
+  // ── Stacked Bar: Daily Cost
+  destroyChart('cost');
+  charts.cost = new Chart($('chartCost'), {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: PLATFORMS.map(p => {
+        const m = trendMap(p.key);
+        return {
+          label: p.label,
+          data: labels.map(d => m[d]?.cost_usd ?? 0),
+          backgroundColor: p.color + 'cc',
+          stack: 'cost',
+        };
+      }),
+    },
+    options: chartOpts('USD', true),
+  });
+
+  // ── Doughnut: Active Users
+  destroyChart('users');
+  const userVals = PLATFORMS.map(p => summaryData?.platforms?.[p.key]?.active_users ?? 0);
+  const hasUsers = userVals.some(v => v > 0);
+  charts.users = new Chart($('chartUsers'), {
+    type: 'doughnut',
+    data: {
+      labels: PLATFORMS.map(p => p.label),
+      datasets: [{
+        data: hasUsers ? userVals : [1, 1, 1],
+        backgroundColor: PLATFORMS.map(p => p.color + (hasUsers ? 'cc' : '33')),
+        borderColor: '#0f1117',
+        borderWidth: 3,
+      }],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#8892b0', padding: 14, font: { size: 12 } } },
+        tooltip: {
+          callbacks: {
+            label: ctx => hasUsers
+              ? ` ${ctx.label}: ${ctx.parsed.toLocaleString()} users`
+              : ` ${ctx.label}: no data`,
+          },
+        },
+      },
+      cutout: '62%',
+    },
+  });
+
+  // ── Bar: Seat Adoption (M365 only)
+  destroyChart('adoption');
+  const cop = summaryData?.platforms?.m365_copilot;
+  const appBreakdown = cop?.app_breakdown ?? {};
+  const appLabels = ['Teams', 'Outlook', 'Word', 'Excel', 'PowerPoint'];
+  const appKeys   = ['teams', 'outlook', 'word', 'excel', 'powerpoint'];
+  charts.adoption = new Chart($('chartAdoption'), {
+    type: 'bar',
+    data: {
+      labels: appLabels,
+      datasets: [{
+        label: 'Active Users',
+        data: appKeys.map(k => appBreakdown[k] ?? 0),
+        backgroundColor: '#0078D4cc',
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      ...chartOpts('Users'),
+      indexAxis: 'y',
+      plugins: {
+        ...chartOpts('Users').plugins,
+        legend: { display: false },
+        title: {
+          display: !cop,
+          text: 'Upload M365 Copilot data to see app breakdown',
+          color: '#8892b0',
+          font: { size: 12 },
+        },
+      },
+    },
+  });
+}
+
+function chartOpts(yLabel, stacked = false) {
+  const gridColor = 'rgba(45,49,73,0.6)';
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { labels: { color: '#8892b0', padding: 12, font: { size: 12 }, boxWidth: 12 } },
+      tooltip: { backgroundColor: '#1f2335', titleColor: '#e2e8f0', bodyColor: '#8892b0', borderColor: '#2d3149', borderWidth: 1 },
+    },
+    scales: {
+      x: {
+        stacked,
+        grid: { color: gridColor },
+        ticks: { color: '#8892b0', font: { size: 11 }, maxTicksLimit: 10, maxRotation: 0 },
+      },
+      y: {
+        stacked,
+        grid: { color: gridColor },
+        ticks: { color: '#8892b0', font: { size: 11 } },
+        title: { display: !!yLabel, text: yLabel, color: '#8892b0', font: { size: 11 } },
+      },
+    },
+  };
+}
+
+// ─── MODEL BREAKDOWN TABLES ─────────────────────────────────
+function renderBreakdown() {
+  const grid = $('breakdownGrid');
+  grid.innerHTML = '';
+
+  PLATFORMS.forEach(p => {
+    const d = summaryData?.platforms?.[p.key];
+    const models = d?.model_breakdown ?? {};
+    const rows = Object.entries(models).sort((a, b) => b[1].requests - a[1].requests);
+
+    const rowsHtml = rows.length
+      ? rows.map(([model, stats]) => `
+          <tr>
+            <td>${model}</td>
+            <td>${fmt.num(stats.requests)}</td>
+            <td>${fmt.usd(stats.cost_usd)}</td>
+          </tr>`).join('')
+      : `<tr class="empty-row"><td colspan="3">No data — upload a CSV to populate</td></tr>`;
+
+    // M365 Copilot shows app breakdown instead of models
+    let tableHtml;
+    if (p.key === 'm365_copilot') {
+      const apps = d?.app_breakdown ?? {};
+      const appRows = Object.entries(apps).filter(([,v]) => v > 0)
+        .sort((a, b) => b[1] - a[1])
+        .map(([app, count]) => `<tr><td style="text-transform:capitalize">${app}</td><td>${fmt.num(count)}</td><td>—</td></tr>`)
+        .join('');
+      tableHtml = `
+        <table>
+          <thead><tr><th>App</th><th>Active Users</th><th>Cost</th></tr></thead>
+          <tbody>${appRows || `<tr class="empty-row"><td colspan="3">No data</td></tr>`}</tbody>
+        </table>`;
+    } else {
+      tableHtml = `
+        <table>
+          <thead><tr><th>Model</th><th>Requests</th><th>Cost</th></tr></thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>`;
+    }
+
+    grid.insertAdjacentHTML('beforeend', `
+      <div class="bk-card">
+        <div class="bk-hdr" onclick="toggleBreakdown(this)">
+          <div class="bk-title"><span class="dot dot-${p.cls}"></span>${p.label}</div>
+          <span>▼</span>
+        </div>
+        <div class="bk-body">${tableHtml}</div>
+      </div>`);
+  });
+}
+
+function toggleBreakdown(hdr) {
+  const body = hdr.nextElementSibling;
+  const arrow = hdr.querySelector('span:last-child');
+  body.classList.toggle('collapsed');
+  arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
+}
+
+// ════════════════════════════════════════════════════════════
+// UPLOAD
+// ════════════════════════════════════════════════════════════
+function setStatus(platform, cls, msg) {
+  const el = $('status-' + platform);
+  el.className = 'upload-status ' + cls;
+  el.textContent = msg;
+}
+
+async function doUpload(platform, file) {
+  if (!file) return;
+  setStatus(platform, 'loading', '⏳ Uploading…');
+
+  const fd = new FormData();
+  fd.append('file', file);
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/upload/${platform}`, { method: 'POST', body: fd });
+    const body = await res.json();
+    if (res.ok) {
+      setStatus(platform, 'ok',
+        `✓ Uploaded ${file.name} — ${fmt.num(body.total_requests)} requests · ${fmt.usd(body.total_cost_usd)} · periods: ${body.stored_periods?.join(', ')}`
+      );
+      // Reload dashboard data after a brief delay
+      setTimeout(() => loadAll(currentPeriod), 800);
+    } else {
+      setStatus(platform, 'err', '✗ ' + (body.detail || 'Upload failed'));
+    }
+  } catch (e) {
+    setStatus(platform, 'err', '✗ Network error — is the backend running at ' + BACKEND_URL + '?');
+  }
+}
+
+// Wire file inputs
+['anthropic', 'openai', 'copilot'].forEach(platform => {
+  const input = $('file-' + platform);
+  input.addEventListener('change', e => {
+    doUpload(platform, e.target.files[0]);
+    e.target.value = ''; // reset so same file can be re-uploaded
+  });
+
+  // Drag & drop
+  const zone = $('zone-' + platform);
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer?.files?.[0];
+    if (file) doUpload(platform, file);
+  });
+});
+
+// ════════════════════════════════════════════════════════════
+// EVENTS
+// ════════════════════════════════════════════════════════════
+
+// Period tabs
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentPeriod = parseInt(btn.dataset.period, 10);
+    loadAll(currentPeriod);
+  });
+});
+
+// Refresh button
+$('refreshBtn').addEventListener('click', () => {
+  const btn = $('refreshBtn');
+  btn.innerHTML = '<span class="spin"></span> Refreshing';
+  btn.disabled = true;
+  loadAll(currentPeriod).finally(() => {
+    btn.innerHTML = '↻ Refresh';
+    btn.disabled = false;
+  });
+});
+
+// Toggle upload panel
+$('uploadPanelHdr').addEventListener('click', () => {
+  const body = $('uploadPanelBody');
+  const chevron = $('uploadChevron');
+  const open = !body.classList.contains('hidden');
+  body.classList.toggle('hidden', open);
+  chevron.textContent = open ? '▼' : '▲';
+});
+
+$('toggleUpload').addEventListener('click', () => {
+  $('uploadPanelHdr').click();
+});
+
+// ════════════════════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════════════════════
+Chart.defaults.color = '#8892b0';
+Chart.defaults.borderColor = 'rgba(45,49,73,0.6)';
+loadAll(currentPeriod);
+</script>
+</body>
+</html>
