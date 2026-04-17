@@ -298,9 +298,116 @@
 
 <script>
 // ════════════════════════════════════════════════════════════
-// CONFIG  — change BACKEND_URL to point at your deployed API
+// CONFIG  — set to your deployed API URL, or leave empty to
+//           use built-in mock data (no backend required)
 // ════════════════════════════════════════════════════════════
-const BACKEND_URL = 'http://localhost:8000';
+const BACKEND_URL = '';   // e.g. 'https://my-api.azurecontainerapps.io'
+
+// ════════════════════════════════════════════════════════════
+// CLIENT-SIDE MOCK DATA
+// Generates realistic data so the dashboard works standalone
+// (no backend needed). Mirrors the Python mock_data.py logic.
+// ════════════════════════════════════════════════════════════
+const MOCK = (() => {
+  function dailySeries(base, days, growthTotal = 0.3, noise = 0.12, seed = 42) {
+    // deterministic LCG pseudo-random
+    let s = seed;
+    const rnd = () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+    const start = base / (1 + growthTotal);
+    let v = start;
+    const today = new Date(); today.setHours(0,0,0,0);
+    const out = [];
+    for (let i = 0; i < days; i++) {
+      const day = new Date(today); day.setDate(today.getDate() - (days - 1 - i));
+      const weekend = day.getDay() === 0 || day.getDay() === 6 ? 0.35 : 1.0;
+      v *= (1 + growthTotal / days);
+      const nf = 1 + (rnd() * 2 - 1) * noise;
+      out.push(Math.max(0, v * weekend * nf));
+    }
+    return out;
+  }
+
+  function dateStr(daysAgo) {
+    const d = new Date(); d.setDate(d.getDate() - daysAgo);
+    return d.toISOString().slice(0, 10);
+  }
+
+  function now() { return new Date().toISOString(); }
+
+  function claude(days) {
+    const reqs  = dailySeries(280, days, 0.3, 0.12, 1);
+    const costs = dailySeries(3.80, days, 0.3, 0.12, 2);
+    const models = {
+      'claude-3-5-sonnet-20241022': [0.58, 0.52],
+      'claude-opus-4-6':            [0.15, 0.36],
+      'claude-haiku-4-5-20251001':  [0.27, 0.12],
+    };
+    let totalReq = 0, totalCost = 0, totalTok = 0;
+    const mb = {}; const trend = [];
+    Object.keys(models).forEach(m => mb[m] = { requests: 0, cost_usd: 0 });
+    reqs.forEach((r, i) => {
+      const req = Math.max(0, Math.round(r));
+      const cost = +costs[i].toFixed(4);
+      const tok = req * 2230;
+      totalReq += req; totalCost += cost; totalTok += tok;
+      trend.push({ date: dateStr(days - 1 - i), requests: req, cost_usd: cost, tokens: tok });
+      Object.entries(models).forEach(([m, [rs, cs]]) => {
+        mb[m].requests  += Math.round(req * rs);
+        mb[m].cost_usd   = +(mb[m].cost_usd + cost * cs).toFixed(4);
+      });
+    });
+    return { platform:'claude', period_days:days, total_requests:totalReq,
+      total_cost_usd:+totalCost.toFixed(2), active_users:null,
+      model_breakdown:mb, daily_trend:trend, fetched_at:now(), _mock:true };
+  }
+
+  function chatgpt(days) {
+    const reqs  = dailySeries(2200, days, 0.3, 0.12, 10);
+    const costs = dailySeries(17.5, days, 0.3, 0.12, 11);
+    const models = {
+      'gpt-4o':      [0.35, 0.62],
+      'gpt-4o-mini': [0.55, 0.20],
+      'o3-mini':     [0.10, 0.18],
+    };
+    let totalReq = 0, totalCost = 0, totalTok = 0;
+    const mb = {}; const trend = [];
+    Object.keys(models).forEach(m => mb[m] = { requests: 0, cost_usd: 0 });
+    reqs.forEach((r, i) => {
+      const req  = Math.max(0, Math.round(r));
+      const cost = +costs[i].toFixed(4);
+      const tok  = req * 1090;
+      totalReq += req; totalCost += cost; totalTok += tok;
+      trend.push({ date: dateStr(days - 1 - i), requests: req, cost_usd: cost, tokens: tok });
+      Object.entries(models).forEach(([m, [rs, cs]]) => {
+        mb[m].requests  += Math.round(req * rs);
+        mb[m].cost_usd   = +(mb[m].cost_usd + cost * cs).toFixed(4);
+      });
+    });
+    return { platform:'chatgpt', period_days:days, total_requests:totalReq,
+      total_cost_usd:+totalCost.toFixed(2), active_users:null,
+      model_breakdown:mb, daily_trend:trend, fetched_at:now(), _mock:true };
+  }
+
+  function copilot(days) {
+    return { platform:'m365_copilot', period_days:days,
+      active_users:1842, licensed_seats:2800, adoption_rate_pct:65.79,
+      app_breakdown:{ teams:1842, outlook:1567, word:1204, excel:987, powerpoint:634 },
+      total_requests:null, total_cost_usd:0, daily_trend:[], fetched_at:now(), _mock:true };
+  }
+
+  function summary(period) {
+    const platforms = { claude:claude(period), chatgpt:chatgpt(period), m365_copilot:copilot(period) };
+    return { period_days:period, last_updated:now(), platforms, _mock:true };
+  }
+
+  function trends(days) {
+    const c = claude(days); const g = chatgpt(days); const m = copilot(days);
+    return { platform:'all', days, _mock:true,
+      trends:{ claude:c.daily_trend, chatgpt:g.daily_trend, m365_copilot:[] } };
+  }
+
+  return { summary, trends };
+})();
 
 // ════════════════════════════════════════════════════════════
 // STATE
@@ -340,6 +447,15 @@ async function loadAll(period) {
   hideAlert();
   setSkeletons();
 
+  // No backend configured — use client-side mock data immediately
+  if (!BACKEND_URL) {
+    summaryData = MOCK.summary(period);
+    trendData   = MOCK.trends(period);
+    showAlert('ℹ️  Demo mode — displaying mock data. Set BACKEND_URL in index.html to connect a live backend.');
+    render();
+    return;
+  }
+
   const [sumRes, trendRes] = await Promise.allSettled([
     fetch(`${BACKEND_URL}/metrics/summary?period=${period}`),
     fetch(`${BACKEND_URL}/metrics/trend?platform=all&days=${period}`),
@@ -349,12 +465,19 @@ async function loadAll(period) {
   if (sumRes.status === 'fulfilled' && sumRes.value.ok) {
     summaryData = await sumRes.value.json();
   } else if (sumRes.status === 'fulfilled' && sumRes.value.status === 503) {
-    const body = await sumRes.value.json();
-    summaryData = null;
-    showAlert('ℹ️  ' + (body.detail || 'No data yet — upload a CSV export above to get started.'));
+    // Backend is up but data not ready yet — fall back to mock
+    summaryData = MOCK.summary(period);
+    trendData   = MOCK.trends(period);
+    showAlert('ℹ️  Backend has no data yet — showing mock data. Upload a CSV or wait for the scheduler.');
+    render();
+    return;
   } else {
-    summaryData = null;
-    showAlert('⚠️  Could not reach the backend at ' + BACKEND_URL + '. Make sure the API is running.', 'error');
+    // Backend unreachable — fall back to mock
+    summaryData = MOCK.summary(period);
+    trendData   = MOCK.trends(period);
+    showAlert('ℹ️  Backend unreachable — showing mock data. Set BACKEND_URL to connect a live API.', 'info');
+    render();
+    return;
   }
 
   // Trend
