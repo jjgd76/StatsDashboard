@@ -174,6 +174,36 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .spin { width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.2); border-top-color: #fff; border-radius: 50%; animation: spin .6s linear infinite; display: inline-block; }
 
+    /* ── FILTER BAR ── */
+    .filter-bar {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px;
+      background: var(--card); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 14px 18px; margin-bottom: 24px;
+    }
+    .filter-group { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .filter-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .7px; color: var(--muted); white-space: nowrap; }
+    .filter-sep { width: 1px; height: 24px; background: var(--border); }
+    @media(max-width:760px) { .filter-sep { display: none; } }
+
+    .plat-toggle {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 12px; border-radius: 20px; border: 1px solid var(--border);
+      background: transparent; color: var(--muted); cursor: pointer; font-size: 12px; font-weight: 500;
+      transition: all .15s;
+    }
+    .plat-toggle:hover { border-color: #4f5882; color: var(--text); }
+    .plat-toggle.active.claude  { background: rgba(217,119,87,.15); border-color: var(--claude);  color: var(--claude); }
+    .plat-toggle.active.chatgpt { background: rgba(16,163,127,.15); border-color: var(--chatgpt); color: var(--chatgpt); }
+    .plat-toggle.active.copilot { background: rgba(0,120,212,.15);  border-color: var(--copilot); color: var(--copilot); }
+
+    .filter-select, .filter-date {
+      background: var(--card2); border: 1px solid var(--border); color: var(--text);
+      padding: 5px 10px; border-radius: 6px; font-size: 13px; cursor: pointer;
+    }
+    .filter-select:focus, .filter-date:focus { outline: none; border-color: #4f5882; }
+    .date-range { display: flex; align-items: center; gap: 6px; }
+    .date-range > span { color: var(--muted); font-size: 12px; }
+
     /* ── FOOTER ── */
     footer { text-align: center; padding: 20px 24px; color: var(--muted); font-size: 12px; border-top: 1px solid var(--border); margin-top: 8px; }
 
@@ -212,9 +242,9 @@
   <div class="upload-panel" id="uploadPanel">
     <div class="upload-panel-hdr" id="uploadPanelHdr">
       <div class="upload-panel-title">⬆ Upload Platform Exports <span style="color:var(--muted);font-weight:400;font-size:12px;">— drag &amp; drop CSV files exported from each platform's admin console</span></div>
-      <span id="uploadChevron">▲</span>
+      <span id="uploadChevron">▼</span>
     </div>
-    <div class="upload-panel-body" id="uploadPanelBody">
+    <div class="upload-panel-body hidden" id="uploadPanelBody">
 
       <!-- Anthropic -->
       <div class="upload-zone" id="zone-anthropic" data-platform="anthropic">
@@ -246,12 +276,41 @@
     </div>
   </div>
 
-  <!-- ══════════════════════════════════════════════ PERIOD TABS -->
-  <div class="period-bar">
-    <label>Period:</label>
-    <button class="tab" data-period="7">7D</button>
-    <button class="tab active" data-period="30">30D</button>
-    <button class="tab" data-period="90">90D</button>
+  <!-- ══════════════════════════════════════════════ FILTER BAR -->
+  <div class="filter-bar">
+    <div class="filter-group">
+      <span class="filter-label">Products</span>
+      <button class="plat-toggle claude  active" data-platform="claude">● Claude</button>
+      <button class="plat-toggle chatgpt active" data-platform="chatgpt">● ChatGPT</button>
+      <button class="plat-toggle copilot active" data-platform="m365_copilot">● M365 Copilot</button>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group">
+      <span class="filter-label">Department</span>
+      <select class="filter-select" id="deptFilter">
+        <option value="all">All Departments</option>
+        <option value="engineering">Engineering</option>
+        <option value="marketing">Marketing</option>
+        <option value="sales">Sales</option>
+        <option value="finance">Finance</option>
+        <option value="hr">HR</option>
+        <option value="operations">Operations</option>
+      </select>
+    </div>
+    <div class="filter-sep"></div>
+    <div class="filter-group">
+      <span class="filter-label">Period</span>
+      <button class="tab" data-period="7">7D</button>
+      <button class="tab active" data-period="30">30D</button>
+      <button class="tab" data-period="90">90D</button>
+      <button class="tab" data-period="custom">Custom</button>
+    </div>
+    <div class="date-range hidden" id="customDateRange">
+      <input type="date" class="filter-date" id="dateFrom">
+      <span>→</span>
+      <input type="date" class="filter-date" id="dateTo">
+      <button class="btn" id="applyDate" style="padding:4px 12px;font-size:12px;">Apply</button>
+    </div>
   </div>
 
   <!-- ══════════════════════════════════════════════ KPI CARDS -->
@@ -410,16 +469,80 @@ const MOCK = (() => {
 // ════════════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════════════
-let currentPeriod = 30;
-let summaryData   = null;
-let trendData     = null;
-let charts        = {};
+let currentPeriod   = 30;
+let summaryData     = null;
+let trendData       = null;
+let charts          = {};
+let activePlatforms = new Set(['claude', 'chatgpt', 'm365_copilot']);
+let selectedDept    = 'all';
+let customFrom      = null;   // 'YYYY-MM-DD' or null
+let customTo        = null;
 
 const PLATFORMS = [
   { key: 'claude',      label: 'Claude',      cls: 'claude',  color: '#D97757' },
   { key: 'chatgpt',     label: 'ChatGPT',     cls: 'chatgpt', color: '#10A37F' },
   { key: 'm365_copilot',label: 'M365 Copilot',cls: 'copilot', color: '#0078D4' },
 ];
+
+const DEPT_FACTORS = {
+  all: 1.0, engineering: 0.35, marketing: 0.20,
+  sales: 0.18, finance: 0.12, hr: 0.08, operations: 0.07,
+};
+
+// ════════════════════════════════════════════════════════════
+// FILTER HELPERS
+// ════════════════════════════════════════════════════════════
+function _sliceTrend(trend) {
+  if (!trend || !trend.length) return trend || [];
+  if (customFrom || customTo) {
+    return trend.filter(r => {
+      if (customFrom && r.date < customFrom) return false;
+      if (customTo   && r.date > customTo)   return false;
+      return true;
+    });
+  }
+  return trend.slice(-currentPeriod);
+}
+
+function getFilteredData(platformKey) {
+  const raw = summaryData?.platforms?.[platformKey];
+  if (!raw) return null;
+  const factor = DEPT_FACTORS[selectedDept] ?? 1.0;
+  const trend = _sliceTrend(raw.daily_trend);
+  const scaledTrend = trend.map(r => ({
+    ...r,
+    requests: Math.round((r.requests || 0) * factor),
+    cost_usd: +((r.cost_usd || 0) * factor).toFixed(4),
+  }));
+  const totalReq  = scaledTrend.reduce((s, r) => s + (r.requests || 0), 0);
+  const totalCost = +scaledTrend.reduce((s, r) => s + (r.cost_usd  || 0), 0).toFixed(2);
+  return {
+    ...raw,
+    total_requests: raw.total_requests  != null ? totalReq  : null,
+    total_cost_usd: totalCost,
+    active_users:   raw.active_users    != null ? Math.round(raw.active_users    * factor) : null,
+    licensed_seats: raw.licensed_seats  != null ? Math.round(raw.licensed_seats  * factor) : null,
+    daily_trend: scaledTrend,
+    model_breakdown: Object.fromEntries(
+      Object.entries(raw.model_breakdown || {}).map(([m, s]) => [m, {
+        requests: Math.round((s.requests || 0) * factor),
+        cost_usd: +((s.cost_usd  || 0) * factor).toFixed(4),
+      }])
+    ),
+  };
+}
+
+function getFilteredTrend(platformKey) {
+  const raw = trendData?.trends?.[platformKey] || [];
+  const factor = DEPT_FACTORS[selectedDept] ?? 1.0;
+  const sliced = _sliceTrend(raw);
+  if (factor === 1.0) return sliced;
+  return sliced.map(r => ({
+    ...r,
+    requests: Math.round((r.requests || 0) * factor),
+    cost_usd: +((r.cost_usd || 0) * factor).toFixed(4),
+  }));
+}
 
 // ════════════════════════════════════════════════════════════
 // HELPERS
@@ -531,7 +654,8 @@ function renderKPIs() {
   grid.innerHTML = '';
 
   PLATFORMS.forEach(p => {
-    const d = summaryData?.platforms?.[p.key];
+    if (!activePlatforms.has(p.key)) return;
+    const d = getFilteredData(p.key);
 
     // Active Users
     grid.insertAdjacentHTML('beforeend', buildKPI(p, 'Active Users',
@@ -594,19 +718,17 @@ function destroyChart(id) {
 }
 
 function buildLabels() {
-  // Collect all dates from trend data across all platforms
   const dateSet = new Set();
-  if (trendData?.trends) {
-    Object.values(trendData.trends).forEach(arr =>
-      arr.forEach(r => r.date && dateSet.add(r.date))
-    );
-  }
-  // If no trend data, fall back to last N days
+  PLATFORMS.filter(p => activePlatforms.has(p.key)).forEach(p =>
+    getFilteredTrend(p.key).forEach(r => r.date && dateSet.add(r.date))
+  );
   if (!dateSet.size) {
     const today = new Date();
-    for (let i = currentPeriod - 1; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
+    const days = (customFrom && customTo)
+      ? Math.ceil((new Date(customTo) - new Date(customFrom)) / 86400000) + 1
+      : currentPeriod;
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today); d.setDate(today.getDate() - i);
       dateSet.add(d.toISOString().slice(0, 10));
     }
   }
@@ -614,9 +736,8 @@ function buildLabels() {
 }
 
 function trendMap(platform) {
-  const arr = trendData?.trends?.[platform] ?? [];
   const map = {};
-  arr.forEach(r => { if (r.date) map[r.date] = r; });
+  getFilteredTrend(platform).forEach(r => { if (r.date) map[r.date] = r; });
   return map;
 }
 
@@ -624,13 +745,15 @@ function renderCharts() {
   if (typeof Chart === 'undefined') return;
   const labels = buildLabels();
 
+  const activePlatList = PLATFORMS.filter(p => activePlatforms.has(p.key));
+
   // ── Line: Daily Requests
   destroyChart('requests');
   charts.requests = new Chart($('chartRequests'), {
     type: 'line',
     data: {
       labels,
-      datasets: PLATFORMS.map(p => {
+      datasets: activePlatList.map(p => {
         const m = trendMap(p.key);
         return {
           label: p.label,
@@ -653,7 +776,7 @@ function renderCharts() {
     type: 'bar',
     data: {
       labels,
-      datasets: PLATFORMS.map(p => {
+      datasets: activePlatList.map(p => {
         const m = trendMap(p.key);
         return {
           label: p.label,
@@ -668,15 +791,15 @@ function renderCharts() {
 
   // ── Doughnut: Active Users
   destroyChart('users');
-  const userVals = PLATFORMS.map(p => summaryData?.platforms?.[p.key]?.active_users ?? 0);
+  const userVals = activePlatList.map(p => getFilteredData(p.key)?.active_users ?? 0);
   const hasUsers = userVals.some(v => v > 0);
   charts.users = new Chart($('chartUsers'), {
     type: 'doughnut',
     data: {
-      labels: PLATFORMS.map(p => p.label),
+      labels: activePlatList.map(p => p.label),
       datasets: [{
-        data: hasUsers ? userVals : [1, 1, 1],
-        backgroundColor: PLATFORMS.map(p => p.color + (hasUsers ? 'cc' : '33')),
+        data: hasUsers ? userVals : activePlatList.map(() => 1),
+        backgroundColor: activePlatList.map(p => p.color + (hasUsers ? 'cc' : '33')),
         borderColor: '#0f1117',
         borderWidth: 3,
       }],
@@ -699,7 +822,7 @@ function renderCharts() {
 
   // ── Bar: Seat Adoption (M365 only)
   destroyChart('adoption');
-  const cop = summaryData?.platforms?.m365_copilot;
+  const cop = activePlatforms.has('m365_copilot') ? getFilteredData('m365_copilot') : null;
   const appBreakdown = cop?.app_breakdown ?? {};
   const appLabels = ['Teams', 'Outlook', 'Word', 'Excel', 'PowerPoint'];
   const appKeys   = ['teams', 'outlook', 'word', 'excel', 'powerpoint'];
@@ -763,7 +886,8 @@ function renderBreakdown() {
   grid.innerHTML = '';
 
   PLATFORMS.forEach(p => {
-    const d = summaryData?.platforms?.[p.key];
+    if (!activePlatforms.has(p.key)) return;
+    const d = getFilteredData(p.key);
     const models = d?.model_breakdown ?? {};
     const rows = Object.entries(models).sort((a, b) => b[1].requests - a[1].requests);
 
@@ -872,14 +996,57 @@ async function doUpload(platform, file) {
 // EVENTS
 // ════════════════════════════════════════════════════════════
 
-// Period tabs
+// Platform toggles
+document.querySelectorAll('.plat-toggle').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const platform = btn.dataset.platform;
+    if (activePlatforms.has(platform)) {
+      if (activePlatforms.size <= 1) return; // keep at least one
+      activePlatforms.delete(platform);
+      btn.classList.remove('active');
+    } else {
+      activePlatforms.add(platform);
+      btn.classList.add('active');
+    }
+    render();
+  });
+});
+
+// Department filter
+$('deptFilter').addEventListener('change', e => {
+  selectedDept = e.target.value;
+  render();
+});
+
+// Period tabs + custom date range
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
     btn.classList.add('active');
-    currentPeriod = parseInt(btn.dataset.period, 10);
-    loadAll(currentPeriod);
+    if (btn.dataset.period === 'custom') {
+      $('customDateRange').classList.remove('hidden');
+      const today = new Date().toISOString().slice(0, 10);
+      const from  = new Date(Date.now() - 29*86400000).toISOString().slice(0, 10);
+      if (!$('dateFrom').value) $('dateFrom').value = from;
+      if (!$('dateTo').value)   $('dateTo').value   = today;
+    } else {
+      $('customDateRange').classList.add('hidden');
+      customFrom = null;
+      customTo   = null;
+      currentPeriod = parseInt(btn.dataset.period, 10);
+      loadAll(currentPeriod);
+    }
   });
+});
+
+$('applyDate').addEventListener('click', () => {
+  const from = $('dateFrom').value;
+  const to   = $('dateTo').value;
+  if (!from || !to || from > to) return;
+  customFrom    = from;
+  customTo      = to;
+  currentPeriod = 90; // ensure enough data loaded
+  loadAll(90);
 });
 
 // Refresh button
