@@ -4,9 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>GenAI Adoption Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"
-          integrity="sha512-ZwR1/gSZM3ai6vCdI+LVF1zSq/5HznD3oD+sCoJrzXJ+yKjtkTIphB9TdhEsnQFpsORSPQG+ZkNo8nUdwLGaQ=="
-          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
     :root {
       --bg:       #0f1117;
@@ -623,6 +621,7 @@ function trendMap(platform) {
 }
 
 function renderCharts() {
+  if (typeof Chart === 'undefined') return;
   const labels = buildLabels();
 
   // ── Line: Daily Requests
@@ -910,8 +909,10 @@ $('toggleUpload').addEventListener('click', () => {
 // ════════════════════════════════════════════════════════════
 // INIT
 // ════════════════════════════════════════════════════════════
-Chart.defaults.color = '#8892b0';
-Chart.defaults.borderColor = 'rgba(45,49,73,0.6)';
+if (typeof Chart !== 'undefined') {
+  Chart.defaults.color = '#8892b0';
+  Chart.defaults.borderColor = 'rgba(45,49,73,0.6)';
+}
 loadAll(currentPeriod);
 </script>
 </body>
