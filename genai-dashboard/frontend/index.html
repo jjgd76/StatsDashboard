@@ -59,43 +59,6 @@
     .alert-error { background: rgba(239,68,68,.10); border-color: rgba(239,68,68,.25); color: #fca5a5; }
     .alert.hidden { display: none; }
 
-    /* ── UPLOAD PANEL ── */
-    .upload-panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--r); margin-bottom: 24px; }
-    .upload-panel-hdr {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 13px 18px; cursor: pointer; user-select: none; border-radius: var(--r);
-    }
-    .upload-panel-hdr:hover { background: var(--card2); }
-    .upload-panel-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-    .upload-panel-body {
-      display: grid; grid-template-columns: repeat(3,1fr); gap: 16px;
-      padding: 0 18px 18px;
-    }
-    .upload-panel-body.hidden { display: none; }
-
-    .upload-zone {
-      border: 2px dashed var(--border); border-radius: 8px; padding: 20px;
-      text-align: center; transition: border-color .2s, background .2s; cursor: pointer; position: relative;
-    }
-    .upload-zone:hover, .upload-zone.drag-over { border-color: #4f5882; background: rgba(79,88,130,.08); }
-    .upload-zone input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; }
-    .upload-zone-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
-    .upload-zone-hint { font-size: 11px; color: var(--muted); margin-bottom: 12px; line-height: 1.45; }
-    .upload-zone-btn {
-      display: inline-block; padding: 5px 14px; border-radius: 5px; border: 1px solid var(--border);
-      font-size: 12px; pointer-events: none;
-    }
-    .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
-    .dot-claude   { background: var(--claude); }
-    .dot-chatgpt  { background: var(--chatgpt); }
-    .dot-copilot  { background: var(--copilot); }
-
-    .upload-status { font-size: 12px; margin-top: 10px; padding: 5px 10px; border-radius: 5px; min-height: 26px; }
-    .upload-status.ok      { background: rgba(34,197,94,.12); color: var(--ok); }
-    .upload-status.err     { background: rgba(239,68,68,.12); color: var(--err); }
-    .upload-status.loading { background: rgba(79,88,130,.12); color: var(--muted); }
-    .upload-status:empty   { display: none; }
-
     /* ── PERIOD TABS ── */
     .period-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 22px; }
     .period-bar label { font-size: 12px; color: var(--muted); }
@@ -209,11 +172,11 @@
 
     /* ── RESPONSIVE ── */
     @media(max-width:960px) {
-      .kpi-grid, .breakdown-grid, .upload-panel-body { grid-template-columns: repeat(2,1fr); }
+      .kpi-grid, .breakdown-grid { grid-template-columns: repeat(2,1fr); }
       .charts-2 { grid-template-columns: 1fr; }
     }
     @media(max-width:580px) {
-      .kpi-grid, .breakdown-grid, .upload-panel-body { grid-template-columns: 1fr; }
+      .kpi-grid, .breakdown-grid { grid-template-columns: 1fr; }
       .topbar { padding: 0 14px; }
       .main { padding: 14px; }
     }
@@ -228,7 +191,6 @@
     <div id="lastUpdated"></div>
   </div>
   <div class="topbar-right">
-    <button class="btn" id="toggleUpload">⬆ Upload Data</button>
     <button class="btn" id="refreshBtn">↻ Refresh</button>
   </div>
 </header>
@@ -237,44 +199,6 @@
 
   <!-- ══════════════════════════════════════════════ ALERT -->
   <div class="alert alert-info hidden" id="alertBanner"></div>
-
-  <!-- ══════════════════════════════════════════════ UPLOAD PANEL -->
-  <div class="upload-panel" id="uploadPanel">
-    <div class="upload-panel-hdr" id="uploadPanelHdr">
-      <div class="upload-panel-title">⬆ Upload Platform Exports <span style="color:var(--muted);font-weight:400;font-size:12px;">— drag &amp; drop CSV files exported from each platform's admin console</span></div>
-      <span id="uploadChevron">▼</span>
-    </div>
-    <div class="upload-panel-body hidden" id="uploadPanelBody">
-
-      <!-- Anthropic -->
-      <div class="upload-zone" id="zone-anthropic" data-platform="anthropic">
-        <input type="file" accept=".csv,.json" id="file-anthropic" />
-        <div class="upload-zone-name"><span class="dot dot-claude"></span>Claude (Anthropic)</div>
-        <div class="upload-zone-hint">Export from <strong>console.anthropic.com</strong> → Settings → Usage → Export CSV</div>
-        <div class="upload-zone-btn">Choose file or drag here</div>
-        <div class="upload-status" id="status-anthropic"></div>
-      </div>
-
-      <!-- OpenAI -->
-      <div class="upload-zone" id="zone-openai" data-platform="openai">
-        <input type="file" accept=".csv,.json" id="file-openai" />
-        <div class="upload-zone-name"><span class="dot dot-chatgpt"></span>ChatGPT (OpenAI)</div>
-        <div class="upload-zone-hint">Export from <strong>platform.openai.com</strong> → Usage → Export</div>
-        <div class="upload-zone-btn">Choose file or drag here</div>
-        <div class="upload-status" id="status-openai"></div>
-      </div>
-
-      <!-- M365 Copilot -->
-      <div class="upload-zone" id="zone-copilot" data-platform="copilot">
-        <input type="file" accept=".csv,.json" id="file-copilot" />
-        <div class="upload-zone-name"><span class="dot dot-copilot"></span>M365 Copilot</div>
-        <div class="upload-zone-hint">Export from <strong>admin.microsoft.com</strong> → Reports → Microsoft 365 Copilot → Export</div>
-        <div class="upload-zone-btn">Choose file or drag here</div>
-        <div class="upload-status" id="status-copilot"></div>
-      </div>
-
-    </div>
-  </div>
 
   <!-- ══════════════════════════════════════════════ FILTER BAR -->
   <div class="filter-bar">
@@ -350,7 +274,7 @@
     <!-- Populated by JS -->
   </div>
 
-  <footer>Data sourced from uploaded exports · Claude (Anthropic Console) · ChatGPT (OpenAI Platform) · M365 Copilot (Microsoft 365 Admin Center)</footer>
+  <footer>GenAI Adoption Dashboard · Claude (Anthropic) · ChatGPT (OpenAI) · M365 Copilot (Microsoft)</footer>
 </div>
 
 <script>
@@ -589,7 +513,7 @@ async function loadAll(period) {
     // Backend is up but data not ready yet — fall back to mock
     summaryData = MOCK.summary(period);
     trendData   = MOCK.trends(period);
-    showAlert('ℹ️  Backend has no data yet — showing mock data. Upload a CSV or wait for the scheduler.');
+    showAlert('ℹ️  Backend has no data yet — showing mock data.');
     render();
     return;
   } else {
@@ -845,7 +769,7 @@ function renderCharts() {
         legend: { display: false },
         title: {
           display: !cop,
-          text: 'Upload M365 Copilot data to see app breakdown',
+          text: 'No M365 Copilot data available',
           color: '#8892b0',
           font: { size: 12 },
         },
@@ -898,7 +822,7 @@ function renderBreakdown() {
             <td>${fmt.num(stats.requests)}</td>
             <td>${fmt.usd(stats.cost_usd)}</td>
           </tr>`).join('')
-      : `<tr class="empty-row"><td colspan="3">No data — upload a CSV to populate</td></tr>`;
+      : `<tr class="empty-row"><td colspan="3">No data available</td></tr>`;
 
     // M365 Copilot shows app breakdown instead of models
     let tableHtml;
@@ -939,58 +863,6 @@ function toggleBreakdown(hdr) {
   arrow.textContent = body.classList.contains('collapsed') ? '▶' : '▼';
 }
 
-// ════════════════════════════════════════════════════════════
-// UPLOAD
-// ════════════════════════════════════════════════════════════
-function setStatus(platform, cls, msg) {
-  const el = $('status-' + platform);
-  el.className = 'upload-status ' + cls;
-  el.textContent = msg;
-}
-
-async function doUpload(platform, file) {
-  if (!file) return;
-  setStatus(platform, 'loading', '⏳ Uploading…');
-
-  const fd = new FormData();
-  fd.append('file', file);
-
-  try {
-    const res = await fetch(`${BACKEND_URL}/upload/${platform}`, { method: 'POST', body: fd });
-    const body = await res.json();
-    if (res.ok) {
-      setStatus(platform, 'ok',
-        `✓ Uploaded ${file.name} — ${fmt.num(body.total_requests)} requests · ${fmt.usd(body.total_cost_usd)} · periods: ${body.stored_periods?.join(', ')}`
-      );
-      // Reload dashboard data after a brief delay
-      setTimeout(() => loadAll(currentPeriod), 800);
-    } else {
-      setStatus(platform, 'err', '✗ ' + (body.detail || 'Upload failed'));
-    }
-  } catch (e) {
-    setStatus(platform, 'err', '✗ Network error — is the backend running at ' + BACKEND_URL + '?');
-  }
-}
-
-// Wire file inputs
-['anthropic', 'openai', 'copilot'].forEach(platform => {
-  const input = $('file-' + platform);
-  input.addEventListener('change', e => {
-    doUpload(platform, e.target.files[0]);
-    e.target.value = ''; // reset so same file can be re-uploaded
-  });
-
-  // Drag & drop
-  const zone = $('zone-' + platform);
-  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    const file = e.dataTransfer?.files?.[0];
-    if (file) doUpload(platform, file);
-  });
-});
 
 // ════════════════════════════════════════════════════════════
 // EVENTS
@@ -1060,18 +932,6 @@ $('refreshBtn').addEventListener('click', () => {
   });
 });
 
-// Toggle upload panel
-$('uploadPanelHdr').addEventListener('click', () => {
-  const body = $('uploadPanelBody');
-  const chevron = $('uploadChevron');
-  const open = !body.classList.contains('hidden');
-  body.classList.toggle('hidden', open);
-  chevron.textContent = open ? '▼' : '▲';
-});
-
-$('toggleUpload').addEventListener('click', () => {
-  $('uploadPanelHdr').click();
-});
 
 // ════════════════════════════════════════════════════════════
 // INIT
